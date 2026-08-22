@@ -182,21 +182,12 @@ private:
 };
 
 // Global variables and objects
-const float porcentajeDeVelocidad = 1.0;
+const float PORCENTAJE_DE_VELOCIDAD = 1.0;
 
-const uint8_t motorFrontRightPinA = 5;
-const uint8_t motorFrontRightPinB = 23;
-const uint8_t motorFrontLeftPinA = 19;
-const uint8_t motorFrontLeftPinB = 18;
-const uint8_t motorBackRightPinA = 13;
-const uint8_t motorBackRightPinB = 12;
-const uint8_t motorBackLeftPinA = 27;
-const uint8_t motorBackLeftPinB = 14;
-
-Motor motorFrontRight(motorFrontRightPinA, motorFrontRightPinB);
-Motor motorFrontLeft(motorFrontLeftPinA, motorFrontLeftPinB);
-Motor motorBackRight(motorBackRightPinA, motorBackRightPinB);
-Motor motorBackLeft(motorBackLeftPinA, motorBackLeftPinB);
+Motor motorFrontRight(MOTOR_FRONT_RIGHT_PIN_A, MOTOR_FRONT_RIGHT_PIN_B);
+Motor motorFrontLeft(MOTOR_FRONT_LEFT_PIN_A, MOTOR_FRONT_LEFT_PIN_B);
+Motor motorBackRight(MOTOR_BACK_RIGHT_PIN_A, MOTOR_BACK_RIGHT_PIN_B);
+Motor motorBackLeft(MOTOR_BACK_LEFT_PIN_A, MOTOR_BACK_LEFT_PIN_B);
 
 // Declaraciones adelantadas (prototipos)
 void GoFoward(const char *cmd);
@@ -226,29 +217,29 @@ void moverMotores(float frSpeed, float flSpeed, float brSpeed, float blSpeed)
 
 void GoFoward(const char *cmd)
 {
-  moverMotores(1.0 * porcentajeDeVelocidad, 1.0 * porcentajeDeVelocidad,
-               1.0 * porcentajeDeVelocidad, 1.0 * porcentajeDeVelocidad);
+  moverMotores(1.0 * PORCENTAJE_DE_VELOCIDAD, 1.0 * PORCENTAJE_DE_VELOCIDAD,
+               1.0 * PORCENTAJE_DE_VELOCIDAD, 1.0 * PORCENTAJE_DE_VELOCIDAD);
   cmdInExec = cmd;
 }
 
 void GoBackward(const char *cmd)
 {
-  moverMotores(-1.0 * porcentajeDeVelocidad, -1.0 * porcentajeDeVelocidad,
-               -1.0 * porcentajeDeVelocidad, -1.0 * porcentajeDeVelocidad);
+  moverMotores(-1.0 * PORCENTAJE_DE_VELOCIDAD, -1.0 * PORCENTAJE_DE_VELOCIDAD,
+               -1.0 * PORCENTAJE_DE_VELOCIDAD, -1.0 * PORCENTAJE_DE_VELOCIDAD);
   cmdInExec = cmd;
 }
 
 void goRotateClockwise(const char *cmd)
 {
-  moverMotores(-1.0 * porcentajeDeVelocidad, 1.0 * porcentajeDeVelocidad,
-               -1.0 * porcentajeDeVelocidad, 1.0 * porcentajeDeVelocidad);
+  moverMotores(-1.0 * PORCENTAJE_DE_VELOCIDAD, 1.0 * PORCENTAJE_DE_VELOCIDAD,
+               -1.0 * PORCENTAJE_DE_VELOCIDAD, 1.0 * PORCENTAJE_DE_VELOCIDAD);
   cmdInExec = cmd;
 }
 
 void goRotateCounterclockwise(const char *cmd)
 {
-  moverMotores(1.0 * porcentajeDeVelocidad, -1.0 * porcentajeDeVelocidad,
-               1.0 * porcentajeDeVelocidad, -1.0 * porcentajeDeVelocidad);
+  moverMotores(1.0 * PORCENTAJE_DE_VELOCIDAD, -1.0 * PORCENTAJE_DE_VELOCIDAD,
+               1.0 * PORCENTAJE_DE_VELOCIDAD, -1.0 * PORCENTAJE_DE_VELOCIDAD);
   cmdInExec = cmd;
 }
 

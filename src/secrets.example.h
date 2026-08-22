@@ -1,5 +1,5 @@
 #pragma once
-
+#include <stdint.h>
 // ==========================================
 // CONFIGURACIÓN DE RED Y CREDENCIALES (PLANTILLA)
 // Renombra o copia este archivo como "secrets.h"
@@ -7,11 +7,21 @@
 // ==========================================
 
 // Wi-Fi
-#define SECRET_WIFI_SSID     "TU_NOMBRE_DE_RED"
-#define SECRET_WIFI_PASS     "TU_PASSWORD_WIFI"
+const char *const SECRET_WIFI_SSID = "TU_NOMBRE_DE_RED";
+const char *const SECRET_WIFI_PASS = "TU_PASSWORD_WIFI";
 
 // MQTT
-#define SECRET_MQTT_SERVER   "broker.ejemplo.com"
-#define SECRET_MQTT_PORT     1883
-#define SECRET_MQTT_USER     "usuario_mqtt"
-#define SECRET_MQTT_PASS     "pass_mqtt"
+const char *const SECRET_MQTT_SERVER = "broker.ejemplo.com";
+const unsigned SECRET_MQTT_PORT = 1883;
+const char *const SECRET_MQTT_USER = "usuario_mqtt";
+const char *const SECRET_MQTT_PASS = "pass_mqtt";
+
+// Motor pins
+const uint8_t MOTOR_FRONT_RIGHT_PIN_A = 0;
+const uint8_t MOTOR_FRONT_RIGHT_PIN_B = 1;
+const uint8_t MOTOR_FRONT_LEFT_PIN_A = 2;
+const uint8_t MOTOR_FRONT_LEFT_PIN_B = 3;
+const uint8_t MOTOR_BACK_RIGHT_PIN_A = 4;
+const uint8_t MOTOR_BACK_RIGHT_PIN_B = 5;
+const uint8_t MOTOR_BACK_LEFT_PIN_A = 6;
+const uint8_t MOTOR_BACK_LEFT_PIN_B = 7;
