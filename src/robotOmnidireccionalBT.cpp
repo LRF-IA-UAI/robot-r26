@@ -24,19 +24,24 @@ public:
 
   void move(float speed)
   {
+    speed = constrain(speed, -1.0f, 1.0f);
     int pwm = abs(speed) * 255;
-    if (speed > 0)
+
+    if (speed > 0.0f)
     {
+      // Adelante
       analogWrite(pinA, pwm);
       analogWrite(pinB, 0);
     }
-    else if (speed < 0)
+    else if (speed < 0.0f)
     {
+      // Atrás (corregido)
       analogWrite(pinA, 0);
       analogWrite(pinB, pwm);
     }
     else
     {
+      // Detenido (ambos en 0)
       analogWrite(pinA, 0);
       analogWrite(pinB, 0);
     }
@@ -182,8 +187,6 @@ private:
 };
 
 // Global variables and objects
-const float PORCENTAJE_DE_VELOCIDAD = 1.0;
-
 Motor motorFrontRight(MOTOR_FRONT_RIGHT_PIN_A, MOTOR_FRONT_RIGHT_PIN_B);
 Motor motorFrontLeft(MOTOR_FRONT_LEFT_PIN_A, MOTOR_FRONT_LEFT_PIN_B);
 Motor motorBackRight(MOTOR_BACK_RIGHT_PIN_A, MOTOR_BACK_RIGHT_PIN_B);
@@ -217,29 +220,25 @@ void moverMotores(float frSpeed, float flSpeed, float brSpeed, float blSpeed)
 
 void GoFoward(const char *cmd)
 {
-  moverMotores(1.0 * PORCENTAJE_DE_VELOCIDAD, 1.0 * PORCENTAJE_DE_VELOCIDAD,
-               1.0 * PORCENTAJE_DE_VELOCIDAD, 1.0 * PORCENTAJE_DE_VELOCIDAD);
+  moverMotores(1.0, 1.0, 1.0, 1.0);
   cmdInExec = cmd;
 }
 
 void GoBackward(const char *cmd)
 {
-  moverMotores(-1.0 * PORCENTAJE_DE_VELOCIDAD, -1.0 * PORCENTAJE_DE_VELOCIDAD,
-               -1.0 * PORCENTAJE_DE_VELOCIDAD, -1.0 * PORCENTAJE_DE_VELOCIDAD);
+  moverMotores(-1.0, -1.0, -1.0, -1.0);
   cmdInExec = cmd;
 }
 
 void goRotateClockwise(const char *cmd)
 {
-  moverMotores(-1.0 * PORCENTAJE_DE_VELOCIDAD, 1.0 * PORCENTAJE_DE_VELOCIDAD,
-               -1.0 * PORCENTAJE_DE_VELOCIDAD, 1.0 * PORCENTAJE_DE_VELOCIDAD);
+  moverMotores(-1.0, 1.0, -1.0, 1.0);
   cmdInExec = cmd;
 }
 
 void goRotateCounterclockwise(const char *cmd)
 {
-  moverMotores(1.0 * PORCENTAJE_DE_VELOCIDAD, -1.0 * PORCENTAJE_DE_VELOCIDAD,
-               1.0 * PORCENTAJE_DE_VELOCIDAD, -1.0 * PORCENTAJE_DE_VELOCIDAD);
+  moverMotores(1.0, -1.0, 1.0, -1.0);
   cmdInExec = cmd;
 }
 
@@ -252,6 +251,17 @@ void GoStop(const char *cmd)
 // main arduino/esp32 functions
 void setup()
 {
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  pinMode(MOTOR_FRONT_RIGHT_PIN_A, OUTPUT);
+  pinMode(MOTOR_FRONT_RIGHT_PIN_B, OUTPUT);
+  pinMode(MOTOR_FRONT_LEFT_PIN_A, OUTPUT);
+  pinMode(MOTOR_FRONT_LEFT_PIN_B, OUTPUT);
+  pinMode(MOTOR_BACK_RIGHT_PIN_A, OUTPUT);
+  pinMode(MOTOR_BACK_RIGHT_PIN_B, OUTPUT);
+  pinMode(MOTOR_BACK_LEFT_PIN_A, OUTPUT);
+  pinMode(MOTOR_BACK_LEFT_PIN_B, OUTPUT);
+
   GoStop("NONE");
   connectionManager = new mqttConnectionManager(
       SECRET_WIFI_SSID,
