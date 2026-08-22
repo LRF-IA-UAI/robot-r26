@@ -2,6 +2,7 @@
 #include <PubSubClient.h>
 #include <WiFi.h>
 #include <secrets.h>
+#include <ArduinoJson.h>
 
 // Class and struct declarations
 struct Command
@@ -9,6 +10,8 @@ struct Command
   const char *name;
   void (*action)(const char *);
 };
+
+extern const Command excecutableCommands[5];
 
 class Motor
 {
@@ -142,6 +145,39 @@ private:
     digitalWrite(LED_BUILTIN, LOW);
     String command = String((char *)payload).substring(0, length);
     Serial.println(command);
+
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, payload, length);
+
+    // 3. Validar que el JSON sea válido
+    if (error)
+    {
+      Serial.print("Error al parsear JSON: ");
+      Serial.println(error.c_str());
+      return;
+    }
+
+    const char *cmd = doc["cmd"] | "";
+    const int value = doc["value"] | 0;
+
+    const Command *commandToExecute = nullptr;
+    for (const Command &command : excecutableCommands)
+    {
+      if (strcmp(command.name, cmd) == 0)
+      {
+        commandToExecute = const_cast<Command *>(&command);
+        break;
+      }
+    }
+
+    if (commandToExecute != nullptr)
+    {
+      commandToExecute->action(cmd);
+    }
+    else
+    {
+      Serial.println("Comando no reconocido");
+    }
   }
 };
 
@@ -170,7 +206,7 @@ void goRotateCounterclockwise(const char *cmd);
 void GoStop(const char *cmd);
 
 const char *cmdInExec = "NONE";
-const Command excecutableCommands[] = {
+const Command excecutableCommands[5] = {
     {"FOWARD", GoFoward},
     {"STOP", GoStop},
     {"BACKWARD", GoBackward},
@@ -225,6 +261,7 @@ void GoStop(const char *cmd)
 // main arduino/esp32 functions
 void setup()
 {
+  GoStop("NONE");
   connectionManager = new mqttConnectionManager(
       SECRET_WIFI_SSID,
       SECRET_WIFI_PASS,
@@ -234,8 +271,6 @@ void setup()
       SECRET_MQTT_USER,
       SECRET_MQTT_PASS);
   connectionManager->setupConnection();
-
-  GoStop("NONE");
 }
 
 void loop()
