@@ -11,7 +11,7 @@ struct Command
   void (*action)(const char *);
 };
 
-extern const Command excecutableCommands[5];
+extern const Command excecutableCommands[11];
 
 class Motor
 {
@@ -197,15 +197,27 @@ void GoFoward(const char *cmd);
 void GoBackward(const char *cmd);
 void goRotateClockwise(const char *cmd);
 void goRotateCounterclockwise(const char *cmd);
+void goStrafeRight(const char *cmd);
+void goStrafeLeft(const char *cmd);
+void goDiagonalForwardRight(const char *cmd);
+void goDiagonalBackwardRight(const char *cmd);
+void goDiagonalForwardLeft(const char *cmd);
+void goDiagonalBackwardLeft(const char *cmd);
 void GoStop(const char *cmd);
 
 const char *cmdInExec = "NONE";
-const Command excecutableCommands[5] = {
+const Command excecutableCommands[11] = {
     {"FOWARD", GoFoward},
     {"STOP", GoStop},
     {"BACKWARD", GoBackward},
     {"ROTATE_CLK", goRotateClockwise},
-    {"ROTATE_COUNTERCLK", goRotateCounterclockwise}};
+    {"ROTATE_COUNTERCLK", goRotateCounterclockwise},
+    {"STRAFE_RIGHT", goStrafeRight},
+    {"STRAFE_LEFT", goStrafeLeft},
+    {"DIAGONAL_FORWARD_RIGHT", goDiagonalForwardRight},
+    {"DIAGONAL_BACKWARD_RIGHT", goDiagonalBackwardRight},
+    {"DIAGONAL_FORWARD_LEFT", goDiagonalForwardLeft},
+    {"DIAGONAL_BACKWARD_LEFT", goDiagonalBackwardLeft}};
 
 cmdConnectionManager *connectionManager = nullptr;
 
@@ -220,25 +232,61 @@ void moverMotores(float frSpeed, float flSpeed, float brSpeed, float blSpeed)
 
 void GoFoward(const char *cmd)
 {
-  moverMotores(1.0, 1.0, 1.0, 1.0);
+  moverMotores(1.0, -1.0, -1.0, 1.0);
   cmdInExec = cmd;
 }
 
 void GoBackward(const char *cmd)
 {
-  moverMotores(-1.0, -1.0, -1.0, -1.0);
+  moverMotores(-1.0, 1.0, 1.0, -1.0);
   cmdInExec = cmd;
 }
 
 void goRotateClockwise(const char *cmd)
 {
-  moverMotores(-1.0, 1.0, -1.0, 1.0);
+  moverMotores(-1.0, -1.0, -1.0, -1.0);
   cmdInExec = cmd;
 }
 
 void goRotateCounterclockwise(const char *cmd)
 {
-  moverMotores(1.0, -1.0, 1.0, -1.0);
+  moverMotores(1.0, 1.0, 1.0, 1.0);
+  cmdInExec = cmd;
+}
+
+void goStrafeRight(const char *cmd)
+{
+  moverMotores(-1.0, -1.0, 1.0, 1.0);
+  cmdInExec = cmd;
+}
+
+void goStrafeLeft(const char *cmd)
+{
+  moverMotores(1.0, 1.0, -1.0, -1.0);
+  cmdInExec = cmd;
+}
+
+void goDiagonalForwardRight(const char *cmd)
+{
+  moverMotores(0.0, -1.0, 0.0, 1.0);
+  cmdInExec = cmd;
+}
+
+void goDiagonalBackwardRight(const char *cmd)
+{
+  moverMotores(-1.0, 0.0, 1.0, 0.0);
+  cmdInExec = cmd;
+}
+
+void goDiagonalForwardLeft(const char *cmd)
+{
+  moverMotores(1.0, 0.0, -1.0, 0.0);
+  cmdInExec = cmd;
+}
+
+void goDiagonalBackwardLeft(const char *cmd)
+{
+  moverMotores(0.0, 1.0, 0.0, -1.0);
   cmdInExec = cmd;
 }
 
