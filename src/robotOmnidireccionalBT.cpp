@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <PubSubClient.h>
 #include <WiFi.h>
+#include <secrets.h>
 
 // Class and struct declarations
 struct Command
@@ -47,14 +48,14 @@ class cmdConnectionManager
 {
 public:
   virtual void setupConnection() {};
-  virtual bool checkConnection() {};
+  virtual bool checkConnection() { return false; };
   virtual void connectionLoop() {};
 };
 
 class mqttConnectionManager : public cmdConnectionManager
 {
 public:
-  mqttConnectionManager(char *wifiSSID, char *wifiPassword, char *mqttBrokerURL, unsigned mqttBrokerPort, char *mqttTopic, char *mqttUsername, char *mqttPassword)
+  mqttConnectionManager(const char *wifiSSID, const char *wifiPassword, const char *mqttBrokerURL, const unsigned mqttBrokerPort, const char *mqttTopic, const char *mqttUsername, const char *mqttPassword)
   {
     this->wifiSSID = wifiSSID;
     this->wifiPassword = wifiPassword;
@@ -71,14 +72,39 @@ public:
 
   void setupConnection() override
   {
+    Serial.begin(9600);
     WiFi.begin(wifiSSID, wifiPassword);
+    pinMode(LED_BUILTIN, OUTPUT);
+    digitalWrite(LED_BUILTIN, LOW);
     while (WiFi.status() != WL_CONNECTED)
     {
-      delay(500);
+      digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+      Serial.print(".");
+      delay(100);
     }
+
+    Serial.println("Conexión exitosa");
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(200);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(200);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(200);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(200);
 
     mqttClient->connect("ESP32Client", mqttUsername, mqttPassword);
     mqttClient->subscribe(this->mqttTopic);
+    Serial.println("Conexión y subscripción a broker exitosa");
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(200);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(200);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(200);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(200);
+    digitalWrite(LED_BUILTIN, LOW);
   };
 
   bool checkConnection() override
@@ -98,28 +124,24 @@ public:
   };
 
 private:
-  char *wifiSSID;
-  char *wifiPassword;
-  char *mqttBrokerURL;
+  const char *wifiSSID;
+  const char *wifiPassword;
+  const char *mqttBrokerURL;
   unsigned mqttBrokerPort;
-  char *mqttTopic;
-  char *mqttUsername;
-  char *mqttPassword;
+  const char *mqttTopic;
+  const char *mqttUsername;
+  const char *mqttPassword;
 
   PubSubClient *mqttClient;
   WiFiClient wifiClient;
 
   static void mqttCallback(char *topic, byte *payload, unsigned int length)
   {
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(200);
+    digitalWrite(LED_BUILTIN, LOW);
     String command = String((char *)payload).substring(0, length);
-    for (const Command &cmd : excecutableCommands)
-    {
-      if (command.equals(cmd.name))
-      {
-        cmd.action(cmd.name);
-        break;
-      }
-    }
+    Serial.println(command);
   }
 };
 
@@ -204,17 +226,16 @@ void GoStop(const char *cmd)
 void setup()
 {
   connectionManager = new mqttConnectionManager(
-      "TU_SSID",
-      "TU_PASSWORD",
-      "TU_BROKER", // p.ej. "broker.hivemq.com" o IP local
-      1883,
-      "robot/comandos",
-      "TU_USUARIO",
-      "TU_PASS");
+      SECRET_WIFI_SSID,
+      SECRET_WIFI_PASS,
+      SECRET_MQTT_SERVER,
+      SECRET_MQTT_PORT,
+      "robot-omni/movement",
+      SECRET_MQTT_USER,
+      SECRET_MQTT_PASS);
   connectionManager->setupConnection();
 
   GoStop("NONE");
-  Serial.begin(9600);
 }
 
 void loop()
