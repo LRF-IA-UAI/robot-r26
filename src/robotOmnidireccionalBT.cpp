@@ -187,130 +187,73 @@ private:
 };
 
 // Global variables and objects
-Motor motorFrontRight(MOTOR_FRONT_RIGHT_PIN_A, MOTOR_FRONT_RIGHT_PIN_B);
-Motor motorFrontLeft(MOTOR_FRONT_LEFT_PIN_A, MOTOR_FRONT_LEFT_PIN_B);
-Motor motorBackRight(MOTOR_BACK_RIGHT_PIN_A, MOTOR_BACK_RIGHT_PIN_B);
-Motor motorBackLeft(MOTOR_BACK_LEFT_PIN_A, MOTOR_BACK_LEFT_PIN_B);
+Motor motorFront(MOTOR_FRONT_PIN_A, MOTOR_FRONT_PIN_B);
+Motor motorBack(MOTOR_BACK_PIN_A, MOTOR_BACK_PIN_B);
 
 // Declaraciones adelantadas (prototipos)
-void GoFoward(const char *cmd);
-void GoBackward(const char *cmd);
+void goFoward(const char *cmd);
+void goBackward(const char *cmd);
 void goRotateClockwise(const char *cmd);
 void goRotateCounterclockwise(const char *cmd);
-void goStrafeRight(const char *cmd);
-void goStrafeLeft(const char *cmd);
-void goDiagonalForwardRight(const char *cmd);
-void goDiagonalBackwardRight(const char *cmd);
-void goDiagonalForwardLeft(const char *cmd);
-void goDiagonalBackwardLeft(const char *cmd);
-void GoStop(const char *cmd);
+void goStop(const char *cmd);
 
 const char *cmdInExec = "NONE";
 const Command excecutableCommands[11] = {
-    {"FOWARD", GoFoward},
-    {"STOP", GoStop},
-    {"BACKWARD", GoBackward},
+    {"FOWARD", goFoward},
+    {"STOP", goStop},
+    {"BACKWARD", goBackward},
     {"ROTATE_CLK", goRotateClockwise},
-    {"ROTATE_COUNTERCLK", goRotateCounterclockwise},
-    {"STRAFE_RIGHT", goStrafeRight},
-    {"STRAFE_LEFT", goStrafeLeft},
-    {"DIAGONAL_FORWARD_RIGHT", goDiagonalForwardRight},
-    {"DIAGONAL_BACKWARD_RIGHT", goDiagonalBackwardRight},
-    {"DIAGONAL_FORWARD_LEFT", goDiagonalForwardLeft},
-    {"DIAGONAL_BACKWARD_LEFT", goDiagonalBackwardLeft}};
-
+    {"ROTATE_COUNTERCLK", goRotateCounterclockwise}};
 cmdConnectionManager *connectionManager = nullptr;
 
 // general functions
-void moverMotores(float frSpeed, float flSpeed, float brSpeed, float blSpeed)
+void moverMotores(float frontSpeed, float backSpeed)
 {
-  motorFrontRight.move(frSpeed);
-  motorFrontLeft.move(flSpeed);
-  motorBackLeft.move(brSpeed);
-  motorBackRight.move(blSpeed);
+  motorFront.move(frontSpeed);
+  motorBack.move(backSpeed);
 }
 
-void GoFoward(const char *cmd)
+void goFoward(const char *cmd)
 {
-  moverMotores(1.0, -1.0, -1.0, 1.0);
+  moverMotores(1.0, 0);
   cmdInExec = cmd;
 }
 
-void GoBackward(const char *cmd)
+void goBackward(const char *cmd)
 {
-  moverMotores(-1.0, 1.0, 1.0, -1.0);
+  moverMotores(-1.0, 0);
   cmdInExec = cmd;
 }
 
 void goRotateClockwise(const char *cmd)
 {
-  moverMotores(-1.0, -1.0, -1.0, -1.0);
+  moverMotores(0, -1.0);
   cmdInExec = cmd;
 }
 
 void goRotateCounterclockwise(const char *cmd)
 {
-  moverMotores(1.0, 1.0, 1.0, 1.0);
+  moverMotores(0, 1.0);
   cmdInExec = cmd;
 }
 
-void goStrafeRight(const char *cmd)
+void goStop(const char *cmd)
 {
-  moverMotores(-1.0, -1.0, 1.0, 1.0);
-  cmdInExec = cmd;
-}
-
-void goStrafeLeft(const char *cmd)
-{
-  moverMotores(1.0, 1.0, -1.0, -1.0);
-  cmdInExec = cmd;
-}
-
-void goDiagonalForwardRight(const char *cmd)
-{
-  moverMotores(0.0, -1.0, 0.0, 1.0);
-  cmdInExec = cmd;
-}
-
-void goDiagonalBackwardRight(const char *cmd)
-{
-  moverMotores(-1.0, 0.0, 1.0, 0.0);
-  cmdInExec = cmd;
-}
-
-void goDiagonalForwardLeft(const char *cmd)
-{
-  moverMotores(1.0, 0.0, -1.0, 0.0);
-  cmdInExec = cmd;
-}
-
-void goDiagonalBackwardLeft(const char *cmd)
-{
-  moverMotores(0.0, 1.0, 0.0, -1.0);
-  cmdInExec = cmd;
-}
-
-void GoStop(const char *cmd)
-{
-  moverMotores(0, 0, 0, 0);
+  moverMotores(0, 0);
   cmdInExec = "NONE";
 }
 
-// main arduino/esp32 functions
 void setup()
 {
+  Serial.begin(9600);
+
   pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(MOTOR_FRONT_PIN_A, OUTPUT);
+  pinMode(MOTOR_FRONT_PIN_B, OUTPUT);
+  pinMode(MOTOR_BACK_PIN_A, OUTPUT);
+  pinMode(MOTOR_BACK_PIN_B, OUTPUT);
 
-  pinMode(MOTOR_FRONT_RIGHT_PIN_A, OUTPUT);
-  pinMode(MOTOR_FRONT_RIGHT_PIN_B, OUTPUT);
-  pinMode(MOTOR_FRONT_LEFT_PIN_A, OUTPUT);
-  pinMode(MOTOR_FRONT_LEFT_PIN_B, OUTPUT);
-  pinMode(MOTOR_BACK_RIGHT_PIN_A, OUTPUT);
-  pinMode(MOTOR_BACK_RIGHT_PIN_B, OUTPUT);
-  pinMode(MOTOR_BACK_LEFT_PIN_A, OUTPUT);
-  pinMode(MOTOR_BACK_LEFT_PIN_B, OUTPUT);
-
-  GoStop("NONE");
+  goStop("NONE");
   connectionManager = new mqttConnectionManager(
       SECRET_WIFI_SSID,
       SECRET_WIFI_PASS,

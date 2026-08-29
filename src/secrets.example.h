@@ -17,11 +17,7 @@ const char *const SECRET_MQTT_USER = "usuario_mqtt";
 const char *const SECRET_MQTT_PASS = "pass_mqtt";
 
 // Motor pins
-const uint8_t MOTOR_FRONT_RIGHT_PIN_A = 0;
-const uint8_t MOTOR_FRONT_RIGHT_PIN_B = 1;
-const uint8_t MOTOR_FRONT_LEFT_PIN_A = 2;
-const uint8_t MOTOR_FRONT_LEFT_PIN_B = 3;
-const uint8_t MOTOR_BACK_RIGHT_PIN_A = 4;
-const uint8_t MOTOR_BACK_RIGHT_PIN_B = 5;
-const uint8_t MOTOR_BACK_LEFT_PIN_A = 6;
-const uint8_t MOTOR_BACK_LEFT_PIN_B = 7;
+const uint8_t MOTOR_FRONT_PIN_A = 0;
+const uint8_t MOTOR_FRONT_PIN_B = 1;
+const uint8_t MOTOR_BACK_PIN_A = 2;
+const uint8_t MOTOR_BACK_PIN_B = 3;
