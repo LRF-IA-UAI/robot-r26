@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <secrets.h>
 #include <ArduinoJson.h>
+#include <QMC5883LCompass.h>
 
 // Class and struct declarations
 struct Command
@@ -189,6 +190,12 @@ private:
 // Global variables and objects
 Motor motorFront(MOTOR_FRONT_PIN_A, MOTOR_FRONT_PIN_B);
 Motor motorBack(MOTOR_BACK_PIN_A, MOTOR_BACK_PIN_B);
+QMC5883LCompass compass;
+
+const float DECLINACION = -10.5;
+// Variables de calibración para los ejes en el plano horizontal (X y Z)
+int xMin = 32767, xMax = -32768;
+int zMin = 32767, zMax = -32768;
 
 // Declaraciones adelantadas (prototipos)
 void goFoward(const char *cmd);
@@ -243,9 +250,74 @@ void goStop(const char *cmd)
   cmdInExec = "NONE";
 }
 
+void calibrarXZ()
+{
+  Serial.println(">> Calibrando: Gira el robot 360° en el plano horizontal (6 seg)...");
+  unsigned long tInicio = millis();
+
+  while (millis() - tInicio < 6000)
+  {
+    compass.read();
+    int x = compass.getX();
+    int z = compass.getZ();
+
+    if (x < xMin)
+      xMin = x;
+    if (x > xMax)
+      xMax = x;
+    if (z < zMin)
+      zMin = z;
+    if (z > zMax)
+      zMax = z;
+    delay(20);
+  }
+  Serial.println(">> Calibración lista.");
+}
+
+int obtenerGradosRotacion()
+{
+  compass.read();
+
+  // 1. Lecturas crudas de los ejes horizontales
+  int rawX = compass.getX();
+  int rawZ = compass.getZ();
+
+  // 2. Centrado en el origen (0, 0)
+  float xOffset = (xMax + xMin) / 2.0;
+  float zOffset = (zMax + zMin) / 2.0;
+
+  float x = rawX - xOffset;
+  float z = rawZ - zOffset;
+
+  // 3. Cálculo de rumbo (Frente: X, Lateral: Z)
+  float heading = atan2(z, x);
+
+  // 4. Radianes a grados
+  float grados = heading * 180.0 / PI;
+
+  if (grados < 0)
+  {
+    grados += 360.0;
+  }
+
+  // 5. Corrección por declinación magnética
+  grados += DECLINACION;
+
+  if (grados >= 360.0)
+    grados -= 360.0;
+  if (grados < 0)
+    grados += 360.0;
+
+  return (int)(round(grados)) % 360;
+}
+
 void setup()
 {
   Serial.begin(9600);
+
+  compass.init();
+  compass.setMode(0x01, 0x08, 0x00, 0x00);
+  calibrarXZ();
 
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(MOTOR_FRONT_PIN_A, OUTPUT);
