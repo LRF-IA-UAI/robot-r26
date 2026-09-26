@@ -222,25 +222,25 @@ void moverMotores(float frontSpeed, float backSpeed)
 
 void goFoward(const char *cmd)
 {
-  moverMotores(1.0, 0);
+  moverMotores(0.5, 0);
   cmdInExec = cmd;
 }
 
 void goBackward(const char *cmd)
 {
-  moverMotores(-1.0, 0);
+  moverMotores(-0.5, 0);
   cmdInExec = cmd;
 }
 
 void goRotateClockwise(const char *cmd)
 {
-  moverMotores(0, -1.0);
+  moverMotores(0, -0.5);
   cmdInExec = cmd;
 }
 
 void goRotateCounterclockwise(const char *cmd)
 {
-  moverMotores(0, 1.0);
+  moverMotores(0, 0.5);
   cmdInExec = cmd;
 }
 
@@ -317,7 +317,6 @@ void setup()
 
   compass.init();
   compass.setMode(0x01, 0x08, 0x00, 0x00);
-  calibrarXZ();
 
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(MOTOR_FRONT_PIN_A, OUTPUT);
@@ -325,7 +324,13 @@ void setup()
   pinMode(MOTOR_BACK_PIN_A, OUTPUT);
   pinMode(MOTOR_BACK_PIN_B, OUTPUT);
 
+  // primer stop de limpieza de pines de motores
   goStop("NONE");
+
+  goRotateCounterclockwise("ROTATE_COUNTERCLK");
+  calibrarXZ();
+  goStop("NONE");
+
   connectionManager = new mqttConnectionManager(
       SECRET_WIFI_SSID,
       SECRET_WIFI_PASS,
