@@ -4,6 +4,15 @@
 #include <secrets.h>
 #include <ArduinoJson.h>
 #include <QMC5883LCompass.h>
+#include <esp_now.h>
+#include <esp_wifi.h>
+
+// General constants
+uint8_t serverAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+unsigned long lastHeartbeat = 0;
+const long HEARTBEAT_INTERVAL = 30000; // in MS
+unsigned long lastTelemetry = 0;
+const long TELEMETRY_INTERVAL = 1000; // in MS: envio periodico de sensores
 
 // Class and struct declarations
 struct Command
@@ -13,6 +22,15 @@ struct Command
 };
 
 extern const Command excecutableCommands[11];
+
+// Declarada mas abajo; el ESP-NOW manager la usa para ejecutar comandos.
+void executeCommand(const char *cmd);
+
+// Estado global del comando en ejecucion (definido mas abajo).
+extern const char *cmdInExec;
+
+// Rumbo de la brujula en grados (definida mas abajo; la usa el ESP-NOW manager).
+int obtenerGradosRotacion();
 
 class Motor
 {
@@ -59,133 +77,234 @@ public:
   virtual void setupConnection() {};
   virtual bool checkConnection() { return false; };
   virtual void connectionLoop() {};
+  virtual void sendData(String jsonData) {};
 };
 
-class mqttConnectionManager : public cmdConnectionManager
+class espNowConnectionManager : public cmdConnectionManager
 {
 public:
-  mqttConnectionManager(const char *wifiSSID, const char *wifiPassword, const char *mqttBrokerURL, const unsigned mqttBrokerPort, const char *mqttTopic, const char *mqttUsername, const char *mqttPassword)
+  espNowConnectionManager()
   {
-    this->wifiSSID = wifiSSID;
-    this->wifiPassword = wifiPassword;
-    this->mqttBrokerURL = mqttBrokerURL;
-    this->mqttBrokerPort = mqttBrokerPort;
-    this->mqttTopic = mqttTopic;
-    this->mqttUsername = mqttUsername;
-    this->mqttPassword = mqttPassword;
+    // CRITICO: el callback es estatico y no tiene "this".
+    // Hay que guardar la instancia o el callback nunca hara nada.
+    instance = this;
+  }
 
-    this->mqttClient = new PubSubClient(this->wifiClient);
-    mqttClient->setServer(mqttBrokerURL, mqttBrokerPort);
-    mqttClient->setCallback(mqttCallback);
-  };
+  ~espNowConnectionManager()
+  {
+    if (instance == this)
+      instance = nullptr;
+  }
 
   void setupConnection() override
   {
-    Serial.begin(9600);
-    WiFi.begin(wifiSSID, wifiPassword);
     pinMode(LED_BUILTIN, OUTPUT);
     digitalWrite(LED_BUILTIN, LOW);
-    while (WiFi.status() != WL_CONNECTED)
+
+    // Modo Estacion (ESP-NOW no se conecta a un AP)
+    WiFi.mode(WIFI_STA);
+    // Evita que el WiFi se reconecte y cambie de canal por su cuenta
+    WiFi.disconnect();
+
+    // 1) Inicializar ESP-NOW PRIMERO
+    if (esp_now_init() != ESP_OK)
     {
-      digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-      Serial.print(".");
-      delay(100);
-    }
-
-    Serial.println("Conexión exitosa");
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(200);
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(200);
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(200);
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(200);
-
-    mqttClient->connect("ESP32Client", mqttUsername, mqttPassword);
-    mqttClient->subscribe(this->mqttTopic);
-    Serial.println("Conexión y subscripción a broker exitosa");
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(200);
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(200);
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(200);
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(200);
-    digitalWrite(LED_BUILTIN, LOW);
-  };
-
-  bool checkConnection() override
-  {
-    return WiFi.status() == WL_CONNECTED && mqttClient->connected();
-  };
-
-  void connectionLoop() override
-  {
-    if (!checkConnection())
-    {
-      WiFi.reconnect();
-      mqttClient->connect("ESP32Client", mqttUsername, mqttPassword);
-      mqttClient->subscribe(this->mqttTopic);
-    }
-    mqttClient->loop();
-  };
-
-private:
-  const char *wifiSSID;
-  const char *wifiPassword;
-  const char *mqttBrokerURL;
-  unsigned mqttBrokerPort;
-  const char *mqttTopic;
-  const char *mqttUsername;
-  const char *mqttPassword;
-
-  PubSubClient *mqttClient;
-  WiFiClient wifiClient;
-
-  static void mqttCallback(char *topic, byte *payload, unsigned int length)
-  {
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(200);
-    digitalWrite(LED_BUILTIN, LOW);
-    String command = String((char *)payload).substring(0, length);
-    Serial.println(command);
-
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, payload, length);
-
-    // 3. Validar que el JSON sea válido
-    if (error)
-    {
-      Serial.print("Error al parsear JSON: ");
-      Serial.println(error.c_str());
+      Serial.println("Error inicializando ESP-NOW");
       return;
     }
 
-    const char *cmd = doc["cmd"] | "";
-    const int value = doc["value"] | 0;
+    // 2) Fijar el canal DESPUES de init (debe coincidir con el otro peer)
+    esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
 
-    const Command *commandToExecute = nullptr;
-    for (const Command &command : excecutableCommands)
+    // 3) Registrar el callback de recepcion DESPUES de init
+    esp_now_register_recv_cb(dataRecieveCallback);
+
+    // 4) Registrar el peer (Servidor)
+    esp_now_peer_info_t peerInfo;
+    memset(&peerInfo, 0, sizeof(peerInfo));
+    memcpy(peerInfo.peer_addr, serverAddress, 6);
+    peerInfo.channel = 1; // Canal 1
+    peerInfo.encrypt = false;
+
+    if (esp_now_add_peer(&peerInfo) != ESP_OK)
     {
-      if (strcmp(command.name, cmd) == 0)
-      {
-        commandToExecute = const_cast<Command *>(&command);
-        break;
-      }
+      Serial.println("Fallo al agregar el servidor como Peer");
+      return;
     }
 
-    if (commandToExecute != nullptr)
+    ready = true;
+    Serial.println("Conexion ESP-NOW establecida con exito");
+
+    // Registrarse ante el host: le enviamos nuestra MAC (emisor) para que
+    // nos agregue como peer y nos asigne un UUID.
+    _lastRegisterAttempt = millis();
+    sendRegister();
+  }
+
+  bool checkConnection() override
+  {
+    // ESP-NOW no requiere estar conectado a un AP
+    return ready;
+  }
+
+  void sendData(String jsonData) override
+  {
+    esp_err_t result = esp_now_send(serverAddress, (uint8_t *)jsonData.c_str(), jsonData.length());
+    if (result == ESP_OK)
     {
-      commandToExecute->action(cmd);
+      Serial.println("Enviado: " + jsonData);
     }
     else
     {
-      Serial.println("Comando no reconocido");
+      Serial.println("Error al enviar");
+    }
+  }
+
+  void connectionLoop() override
+  {
+    // Ejecutar (fuera del callback de ESP-NOW) el ultimo comando recibido.
+    if (commandPending)
+    {
+      commandPending = false;
+      executeCommand(pendingCommand);
+    }
+
+    // Parpadeo NO bloqueante cuando llega un comando
+    if (blinkRequest)
+    {
+      blinkRequest = false;
+      blinkTicks = 4;
+    }
+    if (blinkTicks > 0 && millis() - lastBlink >= 100)
+    {
+      lastBlink = millis();
+      blinkState = !blinkState;
+      digitalWrite(LED_BUILTIN, blinkState ? HIGH : LOW);
+      blinkTicks--;
+      if (blinkTicks == 0)
+        digitalWrite(LED_BUILTIN, LOW);
+    }
+
+    unsigned long currentMillis = millis();
+
+    // Reintentar el registro hasta que el host confirme con "welcome".
+    if (!_registered && ready && currentMillis - _lastRegisterAttempt >= 2000)
+    {
+      _lastRegisterAttempt = currentMillis;
+      sendRegister();
+    }
+
+    // Enviar heartbeat y estado cada 30 segundos
+    if (currentMillis - lastHeartbeat >= HEARTBEAT_INTERVAL)
+    {
+      lastHeartbeat = currentMillis;
+
+      JsonDocument doc;
+      doc["type"] = "heartbeat";
+      doc["uuid"] = _uuid;
+      doc["cmd"] = cmdInExec;
+      doc["heading"] = obtenerGradosRotacion();
+      String out;
+      serializeJson(doc, out);
+      sendData(out);
+    }
+
+    // Enviar telemetria de sensores (heading de la brujula) periodicamente.
+    if (ready && currentMillis - lastTelemetry >= TELEMETRY_INTERVAL)
+    {
+      lastTelemetry = currentMillis;
+
+      JsonDocument doc;
+      doc["type"] = "telemetry";
+      doc["uuid"] = _uuid;
+      doc["heading"] = obtenerGradosRotacion();
+      doc["cmd"] = cmdInExec;
+      String out;
+      serializeJson(doc, out);
+      sendData(out);
+    }
+  }
+
+private:
+  static espNowConnectionManager *instance;
+  bool ready = false;
+  volatile bool blinkRequest = false;
+  uint8_t blinkTicks = 0;
+  bool blinkState = false;
+  unsigned long lastBlink = 0;
+  unsigned long _lastRegisterAttempt = 0;
+  bool _registered = false;
+  String _uuid;
+  char pendingCommand[32] = {0};
+  volatile bool commandPending = false;
+
+  // Envia la peticion de registro al host (la MAC viaja como emisor).
+  void sendRegister()
+  {
+    JsonDocument doc;
+    doc["type"] = "register";
+    String out;
+    serializeJson(doc, out);
+    sendData(out);
+  }
+
+  // Encola un comando recibido para ejecutarlo en connectionLoop (no en el callback).
+  void handleIncomingCommand(const char *cmd)
+  {
+    if (cmd == nullptr || cmd[0] == '\0')
+      return;
+
+    Serial.print("Comando recibido: ");
+    Serial.println(cmd);
+
+    strncpy(pendingCommand, cmd, sizeof(pendingCommand) - 1);
+    pendingCommand[sizeof(pendingCommand) - 1] = '\0';
+    commandPending = true;
+    blinkRequest = true; // marcar para parpadear (no bloquear el callback)
+  }
+
+  static void dataRecieveCallback(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
+  {
+    if (instance == nullptr)
+      return;
+
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, incomingData, len);
+
+    if (error)
+    {
+      // Fallback: el host puede mandar el comando en texto plano (ej. "FOWARD").
+      char buf[sizeof(pendingCommand)];
+      int n = len < (int)sizeof(buf) - 1 ? len : (int)sizeof(buf) - 1;
+      memcpy(buf, incomingData, n);
+      buf[n] = '\0';
+
+      if (strchr(buf, '{') == nullptr)
+        instance->handleIncomingCommand(buf);
+      else
+        Serial.println("Error al leer JSON entrante");
+      return;
+    }
+
+    // Respuesta de registro: el host nos asigna un UUID.
+    if (doc["type"].is<const char *>() &&
+        strcmp(doc["type"].as<const char *>(), "welcome") == 0)
+    {
+      instance->_uuid = doc["uuid"].as<const char *>();
+      instance->_registered = true;
+      Serial.print("Registrado en el host. UUID: ");
+      Serial.println(instance->_uuid);
+      return;
+    }
+
+    if (doc["cmd"].is<const char *>())
+    {
+      instance->handleIncomingCommand(doc["cmd"].as<const char *>());
     }
   }
 };
+
+espNowConnectionManager *espNowConnectionManager::instance = nullptr;
 
 // Global variables and objects
 Motor motorFront(MOTOR_FRONT_PIN_A, MOTOR_FRONT_PIN_B);
@@ -212,6 +331,22 @@ const Command excecutableCommands[11] = {
     {"ROTATE_CLK", goRotateClockwise},
     {"ROTATE_COUNTERCLK", goRotateCounterclockwise}};
 cmdConnectionManager *connectionManager = nullptr;
+
+// Busca el comando en la tabla y ejecuta su accion asociada.
+void executeCommand(const char *cmd)
+{
+  for (const Command &c : excecutableCommands)
+  {
+    if (c.name != nullptr && strcmp(c.name, cmd) == 0)
+    {
+      c.action(cmd);
+      return;
+    }
+  }
+
+  Serial.print("Comando desconocido: ");
+  Serial.println(cmd);
+}
 
 // general functions
 void moverMotores(float frontSpeed, float backSpeed)
@@ -327,23 +462,24 @@ void setup()
   // primer stop de limpieza de pines de motores
   goStop("NONE");
 
-  goRotateCounterclockwise("ROTATE_COUNTERCLK");
-  calibrarXZ();
-  goStop("NONE");
+  // goRotateCounterclockwise("ROTATE_COUNTERCLK");
+  // calibrarXZ();
+  // goStop("NONE");
 
-  connectionManager = new mqttConnectionManager(
-      SECRET_WIFI_SSID,
-      SECRET_WIFI_PASS,
-      SECRET_MQTT_SERVER,
-      SECRET_MQTT_PORT,
-      "robot-omni/movement",
-      SECRET_MQTT_USER,
-      SECRET_MQTT_PASS);
+  connectionManager = new espNowConnectionManager();
+  if (connectionManager == nullptr)
+  {
+    Serial.println("Error: no se pudo crear connectionManager");
+    return;
+  }
+
   connectionManager->setupConnection();
 }
 
 void loop()
 {
-  connectionManager->connectionLoop();
-  delay(250);
+  if (connectionManager != nullptr)
+  {
+    connectionManager->connectionLoop();
+  }
 }

@@ -21,3 +21,7 @@ const uint8_t MOTOR_FRONT_PIN_A = 0;
 const uint8_t MOTOR_FRONT_PIN_B = 1;
 const uint8_t MOTOR_BACK_PIN_A = 2;
 const uint8_t MOTOR_BACK_PIN_B = 3;
+
+// Robot configuration
+const uint8_t ROBOT_ID = 0;
+const char *const ROBOT_TYPE = "r26";
