@@ -23,5 +23,9 @@ const uint8_t MOTOR_BACK_PIN_A = 2;
 const uint8_t MOTOR_BACK_PIN_B = 3;
 
 // Robot configuration
+// ID unico del robot: debe ser 1..6 (MAX_ROBOTS del servidor).
 const uint8_t ROBOT_ID = 0;
+// Debe coincidir con un color valido de CSS (el server lo manda al navegador).
+const char *const ROBOT_COLOR = "blue";
+// "mulita" -> un solo slider (avance). Cualquier otro -> dos sliders (L/R).
 const char *const ROBOT_TYPE = "r26";

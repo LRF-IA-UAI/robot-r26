@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ctype.h>
 #include <PubSubClient.h>
 #include <WiFi.h>
 #include <secrets.h>
@@ -13,6 +14,88 @@ unsigned long lastHeartbeat = 0;
 const long HEARTBEAT_INTERVAL = 30000; // in MS
 unsigned long lastTelemetry = 0;
 const long TELEMETRY_INTERVAL = 1000; // in MS: envio periodico de sensores
+const long REGISTER_INTERVAL = 10000; // in MS: reenvio periodico del registro
+
+// Velocidades de los motores (0..255) que llegan desde los sliders del server.
+// speedL_xxx -> motor frontal (avance) | speedR_xxx -> motor trasero (giro)
+int motorSpeedL = 200;
+int motorSpeedR = 200;
+
+// Comparacion de strings sin distinguir mayusculas/minusculas.
+bool equalsIgnoreCase(const char *a, const char *b)
+{
+  if (a == nullptr || b == nullptr)
+    return false;
+  while (*a != '\0' && *b != '\0')
+  {
+    if (tolower((unsigned char)*a) != tolower((unsigned char)*b))
+      return false;
+    a++;
+    b++;
+  }
+  return *a == '\0' && *b == '\0';
+}
+
+// Traduce los comandos que envia el servidor (minusculas, protocolo web)
+// a los nombres internos de excecutableCommands[].
+// Devuelve true si el comando debe encolarse para ejecutarse.
+// Devuelve false si ya fue consumido aqui (comandos de velocidad).
+bool mapServerCommand(const char *serverCmd, char *out, size_t outSize)
+{
+  if (serverCmd == nullptr || serverCmd[0] == '\0')
+    return false;
+
+  // --- Comandos de velocidad de los sliders ---
+  if (strncmp(serverCmd, "speedL_", 7) == 0)
+  {
+    motorSpeedL = constrain(atoi(serverCmd + 7), 0, 255);
+    Serial.printf("Velocidad motor frontal (speedL): %d\n", motorSpeedL);
+    return false;
+  }
+  if (strncmp(serverCmd, "speedR_", 7) == 0)
+  {
+    motorSpeedR = constrain(atoi(serverCmd + 7), 0, 255);
+    Serial.printf("Velocidad motor trasero (speedR): %d\n", motorSpeedR);
+    return false;
+  }
+
+  // --- Comandos de movimiento / acciones ---
+  struct Alias
+  {
+    const char *alias;
+    const char *internal;
+  };
+  static const Alias aliases[] = {
+      {"forward", "FOWARD"},
+      {"up", "FOWARD"},
+      {"foward", "FOWARD"},
+      {"backward", "BACKWARD"},
+      {"down", "BACKWARD"},
+      {"left", "ROTATE_COUNTERCLK"},
+      {"right", "ROTATE_CLK"},
+      {"stop", "STOP"},
+      {"action1", "ACTION1"},
+      {"action2", "ACTION2"},
+      {"action3", "ACTION3"},
+      {"action4", "ACTION4"},
+  };
+
+  for (const Alias &a : aliases)
+  {
+    if (equalsIgnoreCase(serverCmd, a.alias))
+    {
+      strncpy(out, a.internal, outSize - 1);
+      out[outSize - 1] = '\0';
+      return true;
+    }
+  }
+
+  // Comando ya en formato interno (mayusculas) o desconocido:
+  // se pasa tal cual para que executeCommand() decida.
+  strncpy(out, serverCmd, outSize - 1);
+  out[outSize - 1] = '\0';
+  return true;
+}
 
 // Class and struct declarations
 struct Command
@@ -135,8 +218,8 @@ public:
     ready = true;
     Serial.println("Conexion ESP-NOW establecida con exito");
 
-    // Registrarse ante el host: le enviamos nuestra MAC (emisor) para que
-    // nos agregue como peer y nos asigne un UUID.
+    // Registrarse ante el host: enviamos nuestro id + color + tipo. El server
+    // toma la MAC del emisor del frame ESP-NOW y nos agrega como peer.
     _lastRegisterAttempt = millis();
     sendRegister();
   }
@@ -187,21 +270,22 @@ public:
 
     unsigned long currentMillis = millis();
 
-    // Reintentar el registro hasta que el host confirme con "welcome".
-    if (!_registered && ready && currentMillis - _lastRegisterAttempt >= 2000)
+    // El servidor NO responde al registro con un ack, asi que se reenvia
+    // periodicamente para sobrevivir a reinicios del host y a su timeout.
+    if (ready && currentMillis - _lastRegisterAttempt >= REGISTER_INTERVAL)
     {
       _lastRegisterAttempt = currentMillis;
       sendRegister();
     }
 
-    // Enviar heartbeat y estado cada 30 segundos
-    if (currentMillis - lastHeartbeat >= HEARTBEAT_INTERVAL)
+    // Enviar heartbeat cada 30 segundos (el server lo usa para el timeout)
+    if (ready && currentMillis - lastHeartbeat >= HEARTBEAT_INTERVAL)
     {
       lastHeartbeat = currentMillis;
 
       JsonDocument doc;
       doc["type"] = "heartbeat";
-      doc["uuid"] = _uuid;
+      doc["id"] = _id;
       doc["cmd"] = cmdInExec;
       doc["heading"] = obtenerGradosRotacion();
       String out;
@@ -209,14 +293,15 @@ public:
       sendData(out);
     }
 
-    // Enviar telemetria de sensores (heading de la brujula) periodicamente.
+    // Enviar estado de sensores periodicamente (el server lo ignora por ahora,
+    // pero sirve para depuracion y es el mismo payload que usa "status").
     if (ready && currentMillis - lastTelemetry >= TELEMETRY_INTERVAL)
     {
       lastTelemetry = currentMillis;
 
       JsonDocument doc;
       doc["type"] = "telemetry";
-      doc["uuid"] = _uuid;
+      doc["id"] = _id;
       doc["heading"] = obtenerGradosRotacion();
       doc["cmd"] = cmdInExec;
       String out;
@@ -235,29 +320,44 @@ private:
   unsigned long _lastRegisterAttempt = 0;
   bool _registered = false;
   String _uuid;
+  // ID de este robot: lo define ROBOT_ID en secrets.h. Es el mismo id que usa
+  // el servidor (1..MAX_ROBOTS) para identificarnos, mandarnos comandos y
+  // enrutar el turno de los usuarios.
+  const uint8_t _id = ROBOT_ID;
   char pendingCommand[32] = {0};
   volatile bool commandPending = false;
 
-  // Envia la peticion de registro al host (la MAC viaja como emisor).
+  // Envia el registro al host. El servidor espera id + color + robotType
+  // (ver RobotManager::handleRegister) y NO responde con ack.
   void sendRegister()
   {
     JsonDocument doc;
     doc["type"] = "register";
+    doc["id"] = _id;
+    doc["color"] = ROBOT_COLOR;
+    doc["robotType"] = ROBOT_TYPE;
     String out;
     serializeJson(doc, out);
     sendData(out);
   }
 
   // Encola un comando recibido para ejecutarlo en connectionLoop (no en el callback).
+  // El comando llega en el formato del servidor (p.ej. "forward", "speedL_200").
   void handleIncomingCommand(const char *cmd)
   {
     if (cmd == nullptr || cmd[0] == '\0')
       return;
 
-    Serial.print("Comando recibido: ");
-    Serial.println(cmd);
+    char internal[sizeof(pendingCommand)];
+    if (!mapServerCommand(cmd, internal, sizeof(internal)))
+      return; // consumido (p. ej. cambio de velocidad), no hay nada que ejecutar
 
-    strncpy(pendingCommand, cmd, sizeof(pendingCommand) - 1);
+    Serial.print("Comando recibido: ");
+    Serial.print(cmd);
+    Serial.print(" -> ");
+    Serial.println(internal);
+
+    strncpy(pendingCommand, internal, sizeof(pendingCommand) - 1);
     pendingCommand[sizeof(pendingCommand) - 1] = '\0';
     commandPending = true;
     blinkRequest = true; // marcar para parpadear (no bloquear el callback)
@@ -286,11 +386,22 @@ private:
       return;
     }
 
-    // Respuesta de registro: el host nos asigna un UUID.
+    // Solo ejecutar lo propio: si el mensaje trae un "id" explicito y no es el
+    // nuestro, se descarta. (El server actual no lo envia, pero asi queda
+    // protegido si en el futuro difunde comandos a todos.)
+    int msgId = doc["id"] | -1;
+    if (msgId != -1 && msgId != (int)instance->_id)
+    {
+      Serial.printf("Mensaje ignorado: es para id %d (soy %d)\n", msgId, instance->_id);
+      return;
+    }
+
+    // Compatibilidad: si el host llegara a responder con un UUID, se guarda.
     if (doc["type"].is<const char *>() &&
         strcmp(doc["type"].as<const char *>(), "welcome") == 0)
     {
-      instance->_uuid = doc["uuid"].as<const char *>();
+      if (doc["uuid"].is<const char *>())
+        instance->_uuid = doc["uuid"].as<const char *>();
       instance->_registered = true;
       Serial.print("Registrado en el host. UUID: ");
       Serial.println(instance->_uuid);
@@ -322,14 +433,26 @@ void goBackward(const char *cmd);
 void goRotateClockwise(const char *cmd);
 void goRotateCounterclockwise(const char *cmd);
 void goStop(const char *cmd);
+void goAction1(const char *cmd);
+void goAction2(const char *cmd);
+void goAction3(const char *cmd);
+void goAction4(const char *cmd);
 
-const char *cmdInExec = "NONE";
+// cmdInExec apunta a este buffer (no a pendingCommand) para que el nombre del
+// comando no cambie mientras se envia en el heartbeat.
+char cmdInExecBuffer[24] = "NONE";
+const char *cmdInExec = cmdInExecBuffer;
+
 const Command excecutableCommands[11] = {
     {"FOWARD", goFoward},
     {"STOP", goStop},
     {"BACKWARD", goBackward},
     {"ROTATE_CLK", goRotateClockwise},
-    {"ROTATE_COUNTERCLK", goRotateCounterclockwise}};
+    {"ROTATE_COUNTERCLK", goRotateCounterclockwise},
+    {"ACTION1", goAction1},
+    {"ACTION2", goAction2},
+    {"ACTION3", goAction3},
+    {"ACTION4", goAction4}};
 cmdConnectionManager *connectionManager = nullptr;
 
 // Busca el comando en la tabla y ejecuta su accion asociada.
@@ -355,35 +478,56 @@ void moverMotores(float frontSpeed, float backSpeed)
   motorBack.move(backSpeed);
 }
 
+// Copia el nombre del comando al buffer estable que reporta el heartbeat.
+void setCmdInExec(const char *cmd)
+{
+  strncpy(cmdInExecBuffer, cmd, sizeof(cmdInExecBuffer) - 1);
+  cmdInExecBuffer[sizeof(cmdInExecBuffer) - 1] = '\0';
+}
+
 void goFoward(const char *cmd)
 {
-  moverMotores(0.5, 0);
-  cmdInExec = cmd;
+  moverMotores(motorSpeedL / 255.0f, 0);
+  setCmdInExec(cmd);
 }
 
 void goBackward(const char *cmd)
 {
-  moverMotores(-0.5, 0);
-  cmdInExec = cmd;
+  moverMotores(-motorSpeedL / 255.0f, 0);
+  setCmdInExec(cmd);
 }
 
 void goRotateClockwise(const char *cmd)
 {
-  moverMotores(0, -0.5);
-  cmdInExec = cmd;
+  moverMotores(0, -motorSpeedR / 255.0f);
+  setCmdInExec(cmd);
 }
 
 void goRotateCounterclockwise(const char *cmd)
 {
-  moverMotores(0, 0.5);
-  cmdInExec = cmd;
+  moverMotores(0, motorSpeedR / 255.0f);
+  setCmdInExec(cmd);
 }
 
 void goStop(const char *cmd)
 {
   moverMotores(0, 0);
-  cmdInExec = "NONE";
+  setCmdInExec("NONE");
 }
+
+// Botones A1..A4 del server: todavia no tienen hardware asignado.
+// Se dejan como stubs para que el robot los reconozca y no los reporte como
+// "comando desconocido"; implementa aqui tu logica real.
+void goActionPlaceholder(const char *cmd)
+{
+  Serial.printf("Accion %s recibida (sin implementar)\n", cmd);
+  setCmdInExec(cmd);
+}
+
+void goAction1(const char *cmd) { goActionPlaceholder(cmd); }
+void goAction2(const char *cmd) { goActionPlaceholder(cmd); }
+void goAction3(const char *cmd) { goActionPlaceholder(cmd); }
+void goAction4(const char *cmd) { goActionPlaceholder(cmd); }
 
 void calibrarXZ()
 {
